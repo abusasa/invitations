@@ -21,7 +21,7 @@ window.TOITECH_CONFIG = {
     // Authentication → Users → Add user (задать email + пароль там).
     // На экране входа в admin.html пользователь вводит только пароль —
     // email подставляется отсюда автоматически.
-    ADMIN_EMAIL: "admin@toitech.kz",
+    ADMIN_EMAIL: "abdullaabusamat2@gmail.com",
 
     // Сколько минут длится демо-предпросмотр неоплаченного сайта.
     DEMO_LIMIT_MINUTES: 30,
