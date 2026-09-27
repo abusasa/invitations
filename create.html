@@ -132,6 +132,9 @@
         <label>2GIS сілтемесі</label>
         <input type="url" id="location_url" placeholder="https://2gis.kz/...">
         <p class="hint">2GIS қосымшасынан «Бөлісу» арқылы сілтемені көшіріп қойыңыз</p>
+
+        <label>Музыка сілтемесі (міндетті емес)</label>
+        <input type="url" id="music_url" placeholder="https://...">
         <div class="error" id="err-loc">Мекеме атауын толтырыңыз</div>
 
         <div class="nav">
@@ -198,6 +201,8 @@ const TOTAL_STEPS = 4;
 let currentStep = 1;
 let selectedTemplate = 'gold_ornament';
 let restaurantId = null; // из ?ref=slug, если есть
+const refCode = new URLSearchParams(window.location.search).get('ref')?.trim() || null;
+let refResolution = Promise.resolve();
 
 const el = (id) => document.getElementById(id);
 
@@ -307,13 +312,11 @@ function escapeHtml(s) {
 // ?ref=slug → restaurant_id (тихо, без UI)
 // ---------------------------------------------------------------------
 async function resolveRef() {
-    const params = new URLSearchParams(window.location.search);
-    const ref = params.get('ref');
-    if (!ref) return;
+    if (!refCode) return;
     const { data, error } = await supabase
         .from('restaurants')
         .select('id')
-        .eq('slug', ref)
+        .eq('slug', refCode)
         .maybeSingle();
     if (!error && data) restaurantId = data.id;
 }
@@ -351,13 +354,17 @@ el('submit-btn').addEventListener('click', async () => {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>Құрылуда...';
 
+    await refResolution;
+
     const payload = {
         restaurant_id: restaurantId,
+        ref_code: refCode,
         event_type: el('event_type').value,
         names: el('names').value.trim(),
         event_date: new Date(el('event_date').value).toISOString(),
         location_name: el('location_name').value.trim(),
         location_url: el('location_url').value.trim() || '',
+        music_url: el('music_url').value.trim() || null,
         template_id: selectedTemplate,
         client_phone: el('client_phone').value.trim()
         // status намеренно не передаём — БД сама принудительно ставит
@@ -390,7 +397,7 @@ function showSubmitError(msg) {
 }
 
 renderProgress();
-resolveRef();
+refResolution = resolveRef();
 </script>
 </body>
 </html>

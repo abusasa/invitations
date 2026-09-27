@@ -45,7 +45,7 @@
     .order-names{font-weight:700; font-size:1.02rem; margin:0;}
     .order-type{font-size:0.8rem; color:#8a8070; margin:2px 0 0;}
     .status-pill{font-size:0.72rem; font-weight:700; padding:4px 10px; border-radius:20px; white-space:nowrap;}
-    .status-pill.draft{background:#FBE9E7; color:var(--danger);}
+    .status-pill.draft, .status-pill.unpaid{background:#FBE9E7; color:var(--danger);}
     .status-pill.paid{background:#E4F0E7; color:var(--ok);}
 
     .order-meta{margin-top:12px; font-size:0.88rem; display:flex; flex-direction:column; gap:5px; color:#4a4335;}
@@ -176,7 +176,7 @@ function showDashboard(client) {
 async function loadOrders(client) {
     const { data, error } = await client
         .from('invitations')
-        .select('id, event_type, names, client_phone, status, created_at, event_date, restaurants(name)')
+        .select('id, restaurant_id, ref_code, event_type, names, client_phone, status, created_at, event_date, restaurants(name, slug)')
         .order('created_at', { ascending: false });
 
     if (error) {
@@ -198,7 +198,9 @@ async function loadOrders(client) {
 }
 
 function renderOrderCard(o) {
-    const restaurantName = o.restaurants ? o.restaurants.name : '—';
+    const restaurant = Array.isArray(o.restaurants) ? o.restaurants[0] : o.restaurants;
+    const restaurantName = restaurant ? restaurant.name : '—';
+    const restaurantSource = o.ref_code || (restaurant && restaurant.slug) || o.restaurant_id || '—';
     const createdAt = new Date(o.created_at);
     return `
     <div class="order-card" data-id="${o.id}" data-created="${o.created_at}" data-status="${o.status}">
@@ -207,15 +209,16 @@ function renderOrderCard(o) {
                 <p class="order-names">${escapeHtml(o.names)}</p>
                 <p class="order-type">${escapeHtml(o.event_type)}</p>
             </div>
-            <span class="status-pill ${o.status}">${o.status === 'paid' ? 'ТӨЛЕНГЕН' : 'DRAFT'}</span>
+            <span class="status-pill ${o.status}">${o.status === 'paid' ? 'ТӨЛЕНГЕН' : escapeHtml(o.status.toUpperCase())}</span>
         </div>
         <div class="order-meta">
             <div class="row"><span class="k">WhatsApp</span><span>${escapeHtml(o.client_phone)}</span></div>
-            <div class="row"><span class="k">Мекеме</span><span>${escapeHtml(restaurantName)}</span></div>
+            <div class="row"><span class="k">Ресторан</span><span>${escapeHtml(restaurantName)}</span></div>
+            <div class="row"><span class="k">Источник</span><span>${escapeHtml(restaurantSource)}</span></div>
             <div class="row"><span class="k">Құрылған уақыт</span><span>${createdAt.toLocaleString('ru-RU')}</span></div>
         </div>
         <div class="expiry-note" data-expiry></div>
-        ${o.status === 'draft'
+        ${['draft', 'unpaid'].includes(o.status)
             ? `<button class="activate-btn" id="activate-${o.id}">Подтвердить оплату (Активировать)</button>`
             : `<button class="activate-btn done" disabled>Активтендірілген</button>`
         }

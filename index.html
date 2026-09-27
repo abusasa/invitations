@@ -77,6 +77,7 @@
         color:#F6F1E4; padding:14px 18px; font-size:0.82rem; text-align:center; line-height:1.4;
     }
     .demo-banner b{color:var(--accent-2);}
+    .demo-banner span{display:block; margin-top:3px; font-variant-numeric:tabular-nums;}
 
     /* ---------- LOCKED SCREEN (блокирует полностью) ---------- */
     .lock-screen{
@@ -144,7 +145,7 @@ const EVENT_TITLES = {
 
 let currentInvitation = null;
 let countdownTimer = null;
-let expiryTimer = null;
+let demoTimer = null;
 
 async function load() {
     if (!invitationId) return renderNotFound();
@@ -259,32 +260,40 @@ function renderRsvp(id) {
 // ---------------------------------------------------------------------
 function applyDemoState(inv) {
     document.querySelectorAll('.demo-banner, .lock-screen').forEach(n => n.remove());
-    clearTimeout(expiryTimer);
+    clearInterval(demoTimer);
 
-    if (inv.status === 'paid') return; // баннер полностью скрыт
+    if (!['draft', 'unpaid'].includes(inv.status)) return;
 
     const createdAt = new Date(inv.created_at).getTime();
     const limitMs = CFG.DEMO_LIMIT_MINUTES * 60 * 1000;
-    const elapsed = Date.now() - createdAt;
-    const remaining = limitMs - elapsed;
-
-    if (remaining <= 0) {
-        showLockScreen();
-        return;
+    function tickDemo() {
+        const remaining = limitMs - (Date.now() - createdAt);
+        if (remaining <= 0) {
+            clearInterval(demoTimer);
+            showLockScreen();
+            return;
+        }
+        showDemoBanner(remaining);
     }
-
-    showDemoBanner();
-    expiryTimer = setTimeout(showLockScreen, remaining);
+    tickDemo();
+    demoTimer = setInterval(tickDemo, 1000);
 }
 
-function showDemoBanner() {
-    const div = document.createElement('div');
-    div.className = 'demo-banner';
-    div.innerHTML = `<b>ДЕМО-РЕЖИМ</b> (Сайт төленбеген). Шектеулерді алу үшін Kaspi арқылы төлем жасаңыз.`;
-    document.body.appendChild(div);
+function showDemoBanner(remaining) {
+    let div = document.querySelector('.demo-banner');
+    if (!div) {
+        div = document.createElement('div');
+        div.className = 'demo-banner';
+        div.innerHTML = `<b>ДЕМО / НЕ ОПЛАЧЕНО</b><span></span>`;
+        document.body.appendChild(div);
+    }
+    const minutes = Math.floor(remaining / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    div.querySelector('span').textContent = `Уақыт қалды: ${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 function showLockScreen() {
+    clearInterval(demoTimer);
     document.querySelectorAll('.demo-banner').forEach(n => n.remove());
     const div = document.createElement('div');
     div.className = 'lock-screen';
@@ -302,12 +311,20 @@ function subscribeRealtime(id) {
     supabase
         .channel(`invitation-${id}`)
         .on('postgres_changes', {
-            event: 'UPDATE', schema: 'public', table: 'invitations', filter: `id=eq.${id}`
+            event: '*', schema: 'public', table: 'invitation_status', filter: `id=eq.${id}`
         }, (payload) => {
-            currentInvitation = { ...currentInvitation, ...payload.new };
+            currentInvitation = { ...currentInvitation, status: payload.new.status };
             applyDemoState(currentInvitation);
         })
-        .subscribe();
+        .subscribe(async (status) => {
+            if (status !== 'SUBSCRIBED') return;
+            const { data } = await supabase.rpc('get_invitation', { p_id: id });
+            const row = Array.isArray(data) ? data[0] : data;
+            if (row && currentInvitation) {
+                currentInvitation = { ...currentInvitation, status: row.status };
+                applyDemoState(currentInvitation);
+            }
+        });
 }
 
 function escapeHtml(s) {

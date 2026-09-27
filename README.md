@@ -3,14 +3,33 @@
 ## 1. Supabase
 1. Создай проект на supabase.com.
 2. SQL Editor → вставь и выполни весь `schema.sql` целиком.
-3. Database → Replication → включи репликацию для таблицы `invitations`
-   (нужно для мгновенного исчезновения баннера после оплаты).
+3. `schema.sql` включает Realtime для `invitation_status`. В этой таблице
+  находятся только UUID приглашения и статус; телефоны и данные события
+  не открываются публичной подписке.
 4. Authentication → Users → Add user → создай админ-аккаунт (email +
    пароль). Этот email пропиши в `config.js` как `ADMIN_EMAIL`.
 
-## 2. config.js
-Заполни `SUPABASE_URL`, `SUPABASE_ANON_KEY` (Project Settings → API) и
-`ADMIN_EMAIL`.
+## 2. Конфигурация
+`config.js` принимает значения из `window.__TOITECH_CONFIG__`, глобальных
+`window.NEXT_PUBLIC_SUPABASE_URL` / `window.NEXT_PUBLIC_SUPABASE_ANON_KEY`
+или `process.env.NEXT_PUBLIC_*` при сборке бандлером. Для обычного
+статического деплоя Vercel переменные окружения сами по себе не попадают
+в браузер; перед `config.js` добавь конфиг-скрипт с публичным anon key:
+
+```html
+<script>
+window.__TOITECH_CONFIG__ = {
+  SUPABASE_URL: "https://YOUR_PROJECT.supabase.co",
+  SUPABASE_ANON_KEY: "YOUR_PUBLIC_ANON_KEY",
+  ADMIN_EMAIL: "admin@example.com"
+};
+</script>
+<script src="config.js"></script>
+```
+
+Повтори это на страницах `create.html`, `index.html` и `admin.html`, если
+используешь такую внешнюю конфигурацию. Публичный anon key защищается RLS;
+секретный service-role key нельзя добавлять в клиентскую конфигурацию.
 
 ## 3. Иконки
 В `icons/` лежат временные плейсхолдеры (icon-192.png, icon-512.png) —
@@ -40,8 +59,9 @@
 - **`event_date` заполняется через `datetime-local` и хранится как ISO
   8601 строка** — нужно для точного обратного отсчёта; поле в БД
   осталось `VARCHAR`, как в ТЗ.
-- **Realtime-подписка** на UPDATE — реализует буквальное требование
-  "баннер моментально исчезает" без перезагрузки страницы.
+- **Realtime-подписка на `invitation_status`** — отдельная таблица содержит
+  только UUID и статус, поэтому гость получает мгновенное обновление оплаты,
+  но не может читать телефоны и другие поля `invitations`.
 
 ## 6. Известное ограничение (осознанно оставлено вне MVP)
 Rate limiting на создание сайтов проверяется через `localStorage` —
