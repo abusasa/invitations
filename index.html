@@ -1,1 +1,321 @@
-Онлайн Шақыру Сервисі | Invitations
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тойға шақыру</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+    :root{
+        /* Базовые токены, шаблоны переопределяют часть переменных ниже */
+        --bg:#F6F1E4; --ink:#221D15; --accent:#7A2430; --accent-2:#B8892B;
+        --card:#ffffff; --font-display:'Playfair Display',Georgia,serif;
+        --font-body:'Inter',system-ui,sans-serif; --radius:18px;
+        --ok:#3E6B4F; --danger:#A44A3F;
+    }
+    *{box-sizing:border-box;}
+    html,body{margin:0; padding:0;}
+    body{
+        font-family:var(--font-body); background:var(--bg); color:var(--ink);
+        min-height:100vh; display:flex; align-items:flex-start; justify-content:center;
+    }
+    #root{width:100%; max-width:520px; min-height:100vh; background:var(--bg); position:relative; padding-bottom:60px;}
+
+    .loading, .not-found{
+        display:flex; align-items:center; justify-content:center; min-height:100vh;
+        flex-direction:column; gap:12px; color:#8a8070; text-align:center; padding:20px;
+    }
+
+    /* ---------- HERO ---------- */
+    .hero{padding:56px 24px 32px; text-align:center; position:relative; overflow:hidden;}
+    .eyebrow{font-size:0.8rem; letter-spacing:.03em; color:var(--accent-2); margin:0 0 14px;}
+    .event-title{font-family:var(--font-display); font-size:2.1rem; margin:0 0 8px; color:var(--accent); line-height:1.2;}
+    .event-names{font-size:1.15rem; font-weight:600; margin:0;}
+    .ornament-frame{
+        position:absolute; inset:14px; border:1.5px solid var(--accent-2); border-radius:20px;
+        pointer-events:none; opacity:.55;
+    }
+
+    /* ---------- COUNTDOWN ---------- */
+    .countdown{display:flex; gap:10px; justify-content:center; margin:28px 24px 0;}
+    .countdown .box{
+        background:var(--card); border-radius:12px; padding:14px 10px; min-width:64px;
+        text-align:center; box-shadow:0 2px 10px rgba(0,0,0,.06);
+    }
+    .countdown .num{font-size:1.5rem; font-weight:800; color:var(--accent);}
+    .countdown .lbl{font-size:0.7rem; color:#8a8070; margin-top:2px;}
+
+    /* ---------- DETAILS ---------- */
+    .details{margin:32px 24px; background:var(--card); border-radius:var(--radius); padding:22px; box-shadow:0 4px 20px rgba(0,0,0,.06);}
+    .details h2{font-family:var(--font-display); font-size:1.2rem; margin:0 0 14px; color:var(--accent);}
+    .detail-row{display:flex; gap:10px; padding:9px 0; border-bottom:1px solid #eee2c8; font-size:0.95rem;}
+    .detail-row:last-child{border-bottom:none;}
+    .detail-row .k{color:#8a8070; min-width:90px; flex-shrink:0;}
+
+    .map-btn{
+        display:block; text-align:center; margin-top:16px; padding:14px; border-radius:12px;
+        background:var(--accent); color:#fff; text-decoration:none; font-weight:700;
+    }
+
+    /* ---------- RSVP ---------- */
+    .rsvp{margin:0 24px 32px; background:var(--card); border-radius:var(--radius); padding:22px; box-shadow:0 4px 20px rgba(0,0,0,.06); text-align:center;}
+    .rsvp h2{font-family:var(--font-display); font-size:1.2rem; margin:0 0 6px; color:var(--accent);}
+    .rsvp p{color:#8a8070; font-size:0.9rem; margin:0 0 16px;}
+    .rsvp-buttons{display:flex; gap:10px;}
+    .rsvp-buttons button{
+        flex:1; padding:14px; border-radius:12px; border:1.5px solid var(--accent); background:transparent;
+        color:var(--accent); font-weight:700; font-size:0.95rem; cursor:pointer; font-family:inherit;
+    }
+    .rsvp-buttons button.yes.picked{background:var(--ok); border-color:var(--ok); color:#fff;}
+    .rsvp-buttons button.no.picked{background:var(--danger); border-color:var(--danger); color:#fff;}
+    .rsvp-done{font-weight:700; color:var(--ok);}
+
+    /* ---------- DEMO BANNER (не блокирует) ---------- */
+    .demo-banner{
+        position:fixed; bottom:0; left:0; right:0; z-index:40; background:rgba(34,29,21,.94);
+        color:#F6F1E4; padding:14px 18px; font-size:0.82rem; text-align:center; line-height:1.4;
+    }
+    .demo-banner b{color:var(--accent-2);}
+
+    /* ---------- LOCKED SCREEN (блокирует полностью) ---------- */
+    .lock-screen{
+        position:fixed; inset:0; z-index:100; background:rgba(20,16,10,.97); color:#F6F1E4;
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        text-align:center; padding:32px;
+    }
+    .lock-screen h2{font-family:var(--font-display); margin:0 0 10px;}
+    .lock-screen p{max-width:320px; color:#cabfa8;}
+
+    /* =====================================================================
+       ШАБЛОН: modern_minimal
+    ===================================================================== */
+    body[data-tpl="modern_minimal"]{
+        --bg:#FAFAF8; --accent:#3E5C76; --accent-2:#3E5C76;
+        --font-display:'Manrope',sans-serif; --radius:4px;
+    }
+    body[data-tpl="modern_minimal"] .hero{text-align:left; padding:64px 28px 24px;}
+    body[data-tpl="modern_minimal"] .event-title{font-weight:800; letter-spacing:-.02em;}
+    body[data-tpl="modern_minimal"] .ornament-frame{display:none;}
+    body[data-tpl="modern_minimal"] .details, body[data-tpl="modern_minimal"] .rsvp{box-shadow:none; border:1px solid #E4E1D8;}
+    body[data-tpl="modern_minimal"] .countdown .box{border-radius:4px; box-shadow:none; border:1px solid #E4E1D8;}
+    body[data-tpl="modern_minimal"] .map-btn{border-radius:4px;}
+    body[data-tpl="modern_minimal"] .rsvp-buttons button{border-radius:4px;}
+
+    /* =====================================================================
+       ШАБЛОН: kids_party
+    ===================================================================== */
+    body[data-tpl="kids_party"]{
+        --bg:#FFF7E6; --accent:#FF6F59; --accent-2:#5AA9E6;
+        --font-display:'Baloo 2',cursive; --radius:24px;
+    }
+    body[data-tpl="kids_party"] .hero{
+        background:linear-gradient(160deg,#FFC94D 0%,#FF6F59 55%,#5AA9E6 100%);
+        border-radius:0 0 40px 40px; color:#fff; padding:60px 24px 40px;
+    }
+    body[data-tpl="kids_party"] .event-title{color:#fff; font-size:2.3rem;}
+    body[data-tpl="kids_party"] .eyebrow{color:#fff; opacity:.85;}
+    body[data-tpl="kids_party"] .ornament-frame{display:none;}
+    body[data-tpl="kids_party"] .details h2, body[data-tpl="kids_party"] .rsvp h2{color:#FF6F59;}
+    body[data-tpl="kids_party"] .countdown .num{color:#5AA9E6;}
+    body[data-tpl="kids_party"] .map-btn{background:#5AA9E6;}
+    body[data-tpl="kids_party"] .rsvp-buttons button{border-color:#5AA9E6; color:#5AA9E6;}
+</style>
+</head>
+<body>
+<div id="root">
+    <div class="loading" id="loading">Жүктелуде...</div>
+</div>
+
+<script>
+const CFG = window.TOITECH_CONFIG;
+const supabase = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
+
+const params = new URLSearchParams(window.location.search);
+const invitationId = params.get('id');
+
+const EVENT_TITLES = {
+    'Үйлену той': 'Тойға шақыру',
+    'Ұзату той': 'Ұзатуға шақыру',
+    'Сүндет той': 'Сүндет тойға шақыру',
+    'Мерейтой (40/50/60 жас)': 'Мерейтойға шақыру',
+    'Бесік той': 'Бесік тойға шақыру'
+};
+
+let currentInvitation = null;
+let countdownTimer = null;
+let expiryTimer = null;
+
+async function load() {
+    if (!invitationId) return renderNotFound();
+
+    const { data, error } = await supabase.rpc('get_invitation', { p_id: invitationId });
+    // RPC-функция объявлена RETURNS TABLE, supabase-js возвращает массив
+    const row = Array.isArray(data) ? data[0] : data;
+
+    if (error || !row) return renderNotFound();
+
+    currentInvitation = row;
+    render(row);
+    subscribeRealtime(row.id);
+}
+
+function renderNotFound() {
+    document.getElementById('root').innerHTML = `
+        <div class="not-found">
+            <h2>Шақыру табылмады</h2>
+            <p>Сілтемені тексеріңіз немесе шақырушыдан қайта сұраңыз.</p>
+        </div>`;
+}
+
+function render(inv) {
+    document.body.dataset.tpl = inv.template_id || 'gold_ornament';
+    const title = EVENT_TITLES[inv.event_type] || 'Тойға шақыру';
+    const eventDate = new Date(inv.event_date);
+
+    document.getElementById('root').innerHTML = `
+        <section class="hero">
+            <div class="ornament-frame"></div>
+            <p class="eyebrow">Құрметті қонақтар!</p>
+            <h1 class="event-title">${title}</h1>
+            <p class="event-names">${escapeHtml(inv.names)}</p>
+        </section>
+
+        <div class="countdown" id="countdown"></div>
+
+        <section class="details">
+            <h2>Мереке туралы</h2>
+            <div class="detail-row"><span class="k">Күні</span><span>${eventDate.toLocaleString('kk-KZ', { dateStyle: 'full', timeStyle: 'short' })}</span></div>
+            <div class="detail-row"><span class="k">Мекен</span><span>${escapeHtml(inv.location_name)}</span></div>
+            ${inv.restaurant_name ? `<div class="detail-row"><span class="k">Мекеме</span><span>${escapeHtml(inv.restaurant_name)}</span></div>` : ''}
+            ${inv.location_url ? `<a class="map-btn" href="${escapeAttr(inv.location_url)}" target="_blank" rel="noopener">2GIS картасымен ашу</a>` : ''}
+        </section>
+
+        <section class="rsvp" id="rsvp"></section>
+    `;
+
+    startCountdown(eventDate);
+    renderRsvp(inv.id);
+    applyDemoState(inv);
+}
+
+function startCountdown(target) {
+    const box = document.getElementById('countdown');
+    function tick() {
+        const diff = target.getTime() - Date.now();
+        if (diff <= 0) {
+            box.innerHTML = `<div class="box"><div class="num">🎉</div><div class="lbl">Той басталды</div></div>`;
+            clearInterval(countdownTimer);
+            return;
+        }
+        const d = Math.floor(diff / 86400000);
+        const h = Math.floor((diff % 86400000) / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        box.innerHTML = ['Күн', 'Сағ', 'Мин', 'Сек'].map((lbl, i) => {
+            const val = [d, h, m, s][i];
+            return `<div class="box"><div class="num">${val}</div><div class="lbl">${lbl}</div></div>`;
+        }).join('');
+    }
+    tick();
+    countdownTimer = setInterval(tick, 1000);
+}
+
+// ---------------------------------------------------------------------
+// RSVP — эмулируется локально (localStorage), как указано в ТЗ.
+// ---------------------------------------------------------------------
+function renderRsvp(id) {
+    const key = `toitech_rsvp_${id}`;
+    const saved = localStorage.getItem(key);
+    const box = document.getElementById('rsvp');
+
+    function draw(choice) {
+        if (choice) {
+            box.innerHTML = `
+                <h2>Рахмет!</h2>
+                <p class="rsvp-done">${choice === 'yes' ? 'Сіз "Келемін" деп белгіледіңіз' : 'Сіз "Келе алмаймын" деп белгіледіңіз'}</p>
+                <div class="rsvp-buttons" style="margin-top:14px;">
+                    <button type="button" onclick="window.__rsvpReset()">Жауапты өзгерту</button>
+                </div>`;
+        } else {
+            box.innerHTML = `
+                <h2>Келесіз бе?</h2>
+                <p>Жауабыңызды белгілеңіз</p>
+                <div class="rsvp-buttons">
+                    <button type="button" class="yes" onclick="window.__rsvpPick('yes')">Келемін</button>
+                    <button type="button" class="no" onclick="window.__rsvpPick('no')">Келе алмаймын</button>
+                </div>`;
+        }
+    }
+
+    window.__rsvpPick = (choice) => { localStorage.setItem(key, choice); draw(choice); };
+    window.__rsvpReset = () => { localStorage.removeItem(key); draw(null); };
+
+    draw(saved);
+}
+
+// ---------------------------------------------------------------------
+// Демо-режим / водяной знак / блокировка по истечении 30 минут
+// ---------------------------------------------------------------------
+function applyDemoState(inv) {
+    document.querySelectorAll('.demo-banner, .lock-screen').forEach(n => n.remove());
+    clearTimeout(expiryTimer);
+
+    if (inv.status === 'paid') return; // баннер полностью скрыт
+
+    const createdAt = new Date(inv.created_at).getTime();
+    const limitMs = CFG.DEMO_LIMIT_MINUTES * 60 * 1000;
+    const elapsed = Date.now() - createdAt;
+    const remaining = limitMs - elapsed;
+
+    if (remaining <= 0) {
+        showLockScreen();
+        return;
+    }
+
+    showDemoBanner();
+    expiryTimer = setTimeout(showLockScreen, remaining);
+}
+
+function showDemoBanner() {
+    const div = document.createElement('div');
+    div.className = 'demo-banner';
+    div.innerHTML = `<b>ДЕМО-РЕЖИМ</b> (Сайт төленбеген). Шектеулерді алу үшін Kaspi арқылы төлем жасаңыз.`;
+    document.body.appendChild(div);
+}
+
+function showLockScreen() {
+    document.querySelectorAll('.demo-banner').forEach(n => n.remove());
+    const div = document.createElement('div');
+    div.className = 'lock-screen';
+    div.innerHTML = `
+        <h2>Алдын ала қарау аяқталды</h2>
+        <p>Іске қосу үшін әкімшіге хабарласыңыз.</p>`;
+    document.body.appendChild(div);
+}
+
+// ---------------------------------------------------------------------
+// Realtime: как только админ подтверждает оплату, баннер/блокировка
+// исчезают без перезагрузки страницы.
+// ---------------------------------------------------------------------
+function subscribeRealtime(id) {
+    supabase
+        .channel(`invitation-${id}`)
+        .on('postgres_changes', {
+            event: 'UPDATE', schema: 'public', table: 'invitations', filter: `id=eq.${id}`
+        }, (payload) => {
+            currentInvitation = { ...currentInvitation, ...payload.new };
+            applyDemoState(currentInvitation);
+        })
+        .subscribe();
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToiTech — Тойға шақыру сайтын жасау</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+    :root{
+        --bg:#F6F1E4; --ink:#221D15; --maroon:#7A2430; --gold:#B8892B;
+        --gold-light:#D9B865; --line:#E3D9BF; --danger:#A44A3F; --ok:#3E6B4F;
+        --radius:14px;
+    }
+    *{box-sizing:border-box;}
+    body{
+        margin:0; font-family:'Inter',system-ui,-apple-system,sans-serif;
+        background:var(--bg); color:var(--ink); line-height:1.55;
+        padding-bottom:120px;
+    }
+    header{padding:28px 20px 8px; text-align:center;}
+    header h1{
+        font-family:'Playfair Display',Georgia,serif; font-size:1.6rem;
+        margin:0 0 4px; color:var(--maroon);
+    }
+    header p{margin:0; color:#6b6255; font-size:0.92rem;}
+
+    .progress{display:flex; gap:6px; max-width:480px; margin:20px auto 0; padding:0 20px;}
+    .progress i{flex:1; height:4px; border-radius:4px; background:var(--line);}
+    .progress i.done{background:var(--gold);}
+
+    .wizard{max-width:480px; margin:0 auto; padding:24px 20px;}
+    .step{display:none; animation:fade .25s ease;}
+    .step.active{display:block;}
+    @keyframes fade{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;}}
+
+    label{display:block; font-size:0.85rem; font-weight:600; margin:18px 0 6px; color:#4a4335;}
+    label.first{margin-top:0;}
+    input, select{
+        width:100%; padding:13px 14px; border:1.5px solid var(--line);
+        border-radius:10px; font-size:1rem; background:#fff; color:var(--ink);
+        font-family:inherit;
+    }
+    input:focus, select:focus{outline:none; border-color:var(--gold);}
+    .hint{font-size:0.78rem; color:#8a8070; margin-top:4px;}
+    .error{font-size:0.8rem; color:var(--danger); margin-top:5px; display:none;}
+    .error.show{display:block;}
+
+    .templates{display:grid; gap:12px; margin-top:6px;}
+    .tpl-card{
+        border:2px solid var(--line); border-radius:var(--radius); padding:14px;
+        cursor:pointer; display:flex; gap:14px; align-items:center; background:#fff;
+        transition:border-color .15s;
+    }
+    .tpl-card.selected{border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,137,43,.15);}
+    .tpl-swatch{width:56px; height:56px; border-radius:10px; flex-shrink:0;}
+    .tpl-swatch.gold_ornament{background:linear-gradient(135deg,#F6F1E4,#D9B865 70%,#7A2430);}
+    .tpl-swatch.modern_minimal{background:linear-gradient(135deg,#FAFAF8,#3E5C76 85%);}
+    .tpl-swatch.kids_party{background:linear-gradient(135deg,#FFC94D,#FF6F59 55%,#5AA9E6);}
+    .tpl-name{font-weight:700; margin:0 0 2px;}
+    .tpl-desc{margin:0; font-size:0.82rem; color:#6b6255;}
+
+    .nav{display:flex; gap:10px; margin-top:28px;}
+    button{
+        flex:1; padding:14px; border:none; border-radius:10px; font-size:1rem;
+        font-weight:700; cursor:pointer; font-family:inherit;
+    }
+    .btn-primary{background:var(--maroon); color:#fff;}
+    .btn-primary:disabled{background:#c9baa9; cursor:not-allowed;}
+    .btn-secondary{background:transparent; color:var(--maroon); border:1.5px solid var(--maroon);}
+
+    .review{background:#fff; border:1.5px solid var(--line); border-radius:var(--radius); padding:16px;}
+    .review dt{font-size:0.78rem; color:#8a8070; margin-top:10px;}
+    .review dt:first-child{margin-top:0;}
+    .review dd{margin:2px 0 0; font-weight:600;}
+
+    .banner-error{
+        background:#FBE9E7; border:1px solid var(--danger); color:var(--danger);
+        padding:12px 14px; border-radius:10px; font-size:0.88rem; margin-top:16px; display:none;
+    }
+    .banner-error.show{display:block;}
+
+    .spinner{
+        width:18px; height:18px; border:2.5px solid rgba(255,255,255,.4);
+        border-top-color:#fff; border-radius:50%; display:inline-block;
+        animation:spin .7s linear infinite; vertical-align:-3px; margin-right:8px;
+    }
+    @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>Тойға шақыру</h1>
+    <p>Электронды пригласительныйды 2 минутта жасаңыз</p>
+</header>
+
+<div class="progress" id="progress"></div>
+
+<form class="wizard" id="wizard" novalidate>
+
+    <!-- Шаг 1: тип мероприятия и имена -->
+    <div class="step active" data-step="1">
+        <label class="first">Мереке түрі</label>
+        <select id="event_type" required>
+            <option value="" disabled selected>Таңдаңыз...</option>
+            <option>Үйлену той</option>
+            <option>Ұзату той</option>
+            <option>Сүндет той</option>
+            <option>Мерейтой (40/50/60 жас)</option>
+            <option>Бесік той</option>
+        </select>
+
+        <label>Атаулар / Виновник(дар) торжества</label>
+        <input type="text" id="names" placeholder="Мысалы: Асхат пен Айгерім" required>
+        <div class="error" id="err-names">Аты-жөнін толтырыңыз</div>
+
+        <div class="nav">
+            <button type="button" class="btn-primary" data-next>Келесі</button>
+        </div>
+    </div>
+
+    <!-- Шаг 2: дата, ресторан, 2GIS -->
+    <div class="step" data-step="2">
+        <label class="first">Той күні мен уақыты</label>
+        <input type="datetime-local" id="event_date" required>
+        <div class="error" id="err-date">Күнді таңдаңыз</div>
+
+        <label>Мекеме атауы</label>
+        <input type="text" id="location_name" placeholder="Мысалы: Layeli Palace" required>
+
+        <label>2GIS сілтемесі</label>
+        <input type="url" id="location_url" placeholder="https://2gis.kz/...">
+        <p class="hint">2GIS қосымшасынан «Бөлісу» арқылы сілтемені көшіріп қойыңыз</p>
+        <div class="error" id="err-loc">Мекеме атауын толтырыңыз</div>
+
+        <div class="nav">
+            <button type="button" class="btn-secondary" data-prev>Артқа</button>
+            <button type="button" class="btn-primary" data-next>Келесі</button>
+        </div>
+    </div>
+
+    <!-- Шаг 3: шаблон -->
+    <div class="step" data-step="3">
+        <label class="first">Дизайн үлгісі</label>
+        <div class="templates" id="templates">
+            <div class="tpl-card selected" data-tpl="gold_ornament">
+                <div class="tpl-swatch gold_ornament"></div>
+                <div>
+                    <p class="tpl-name">Алтын Ою</p>
+                    <p class="tpl-desc">Ұлттық стиль, алтын өрнек</p>
+                </div>
+            </div>
+            <div class="tpl-card" data-tpl="modern_minimal">
+                <div class="tpl-swatch modern_minimal"></div>
+                <div>
+                    <p class="tpl-name">Modern Minimal</p>
+                    <p class="tpl-desc">Заманауи еуропалық минимализм</p>
+                </div>
+            </div>
+            <div class="tpl-card" data-tpl="kids_party">
+                <div class="tpl-swatch kids_party"></div>
+                <div>
+                    <p class="tpl-name">Балалық</p>
+                    <p class="tpl-desc">Балалар мерекесіне жарқын безендіру</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="nav">
+            <button type="button" class="btn-secondary" data-prev>Артқа</button>
+            <button type="button" class="btn-primary" data-next>Келесі</button>
+        </div>
+    </div>
+
+    <!-- Шаг 4: телефон + подтверждение -->
+    <div class="step" data-step="4">
+        <label class="first">WhatsApp нөміріңіз</label>
+        <input type="tel" id="client_phone" placeholder="+7 (7__) ___-__-__" required>
+        <div class="error" id="err-phone">Нөмір форматы: +7 (7XX) XXX-XX-XX</div>
+
+        <div class="review" id="review"></div>
+        <div class="banner-error" id="submit-error"></div>
+
+        <div class="nav">
+            <button type="button" class="btn-secondary" data-prev>Артқа</button>
+            <button type="button" class="btn-primary" id="submit-btn">Сайтты құру</button>
+        </div>
+    </div>
+
+</form>
+
+<script>
+const CFG = window.TOITECH_CONFIG;
+const supabase = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
+
+const TOTAL_STEPS = 4;
+let currentStep = 1;
+let selectedTemplate = 'gold_ornament';
+let restaurantId = null; // из ?ref=slug, если есть
+
+const el = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------------
+// Прогресс-бар
+// ---------------------------------------------------------------------
+function renderProgress() {
+    const wrap = el('progress');
+    wrap.innerHTML = '';
+    for (let i = 1; i <= TOTAL_STEPS; i++) {
+        const bar = document.createElement('i');
+        if (i <= currentStep) bar.classList.add('done');
+        wrap.appendChild(bar);
+    }
+}
+
+function showStep(n) {
+    document.querySelectorAll('.step').forEach(s => {
+        s.classList.toggle('active', Number(s.dataset.step) === n);
+    });
+    currentStep = n;
+    renderProgress();
+    if (n === TOTAL_STEPS) renderReview();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ---------------------------------------------------------------------
+// Валидация по шагу
+// ---------------------------------------------------------------------
+function validateStep(n) {
+    let ok = true;
+    if (n === 1) {
+        const namesOk = el('names').value.trim().length >= 2;
+        el('err-names').classList.toggle('show', !namesOk);
+        ok = namesOk && el('event_type').value !== '';
+    }
+    if (n === 2) {
+        const dateOk = !!el('event_date').value;
+        const locOk = el('location_name').value.trim().length >= 2;
+        el('err-date').classList.toggle('show', !dateOk);
+        el('err-loc').classList.toggle('show', !locOk);
+        ok = dateOk && locOk;
+    }
+    if (n === 4) {
+        // Формат: +7 (7XX) XXX-XX-XX
+        const phoneRegex = /^\+7\s?\(?7\d{2}\)?\s?\d{3}-?\d{2}-?\d{2}$/;
+        const phoneOk = phoneRegex.test(el('client_phone').value.trim());
+        el('err-phone').classList.toggle('show', !phoneOk);
+        ok = phoneOk;
+    }
+    return ok;
+}
+
+document.querySelectorAll('[data-next]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (validateStep(currentStep) && currentStep < TOTAL_STEPS) showStep(currentStep + 1);
+    });
+});
+document.querySelectorAll('[data-prev]').forEach(btn => {
+    btn.addEventListener('click', () => { if (currentStep > 1) showStep(currentStep - 1); });
+});
+
+// ---------------------------------------------------------------------
+// Автоформатирование телефона по мере ввода
+// ---------------------------------------------------------------------
+el('client_phone').addEventListener('input', (e) => {
+    let digits = e.target.value.replace(/\D/g, '');
+    if (digits.startsWith('8')) digits = '7' + digits.slice(1);
+    if (!digits.startsWith('7')) digits = '7' + digits;
+    digits = digits.slice(0, 11);
+    let formatted = '+7';
+    if (digits.length > 1) formatted += ' (' + digits.slice(1, 4);
+    if (digits.length >= 4) formatted += ') ' + digits.slice(4, 7);
+    if (digits.length >= 7) formatted += '-' + digits.slice(7, 9);
+    if (digits.length >= 9) formatted += '-' + digits.slice(9, 11);
+    e.target.value = formatted;
+});
+
+// ---------------------------------------------------------------------
+// Выбор шаблона
+// ---------------------------------------------------------------------
+document.querySelectorAll('.tpl-card').forEach(card => {
+    card.addEventListener('click', () => {
+        document.querySelectorAll('.tpl-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedTemplate = card.dataset.tpl;
+    });
+});
+
+const TPL_LABELS = { gold_ornament: 'Алтын Ою', modern_minimal: 'Modern Minimal', kids_party: 'Балалық' };
+
+function renderReview() {
+    const dt = el('event_date').value ? new Date(el('event_date').value) : null;
+    el('review').innerHTML = `
+        <dt>Мереке</dt><dd>${escapeHtml(el('event_type').value)}</dd>
+        <dt>Атаулар</dt><dd>${escapeHtml(el('names').value)}</dd>
+        <dt>Күні</dt><dd>${dt ? dt.toLocaleString('kk-KZ') : '—'}</dd>
+        <dt>Мекеме</dt><dd>${escapeHtml(el('location_name').value)}</dd>
+        <dt>Дизайн</dt><dd>${TPL_LABELS[selectedTemplate]}</dd>
+    `;
+}
+function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------------------------------------------------------------------
+// ?ref=slug → restaurant_id (тихо, без UI)
+// ---------------------------------------------------------------------
+async function resolveRef() {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (!ref) return;
+    const { data, error } = await supabase
+        .from('restaurants')
+        .select('id')
+        .eq('slug', ref)
+        .maybeSingle();
+    if (!error && data) restaurantId = data.id;
+}
+
+// ---------------------------------------------------------------------
+// Rate limiting: максимум N созданий в час с этого устройства
+// ---------------------------------------------------------------------
+const RATE_KEY = 'toitech_creation_log';
+
+function checkRateLimit() {
+    const log = JSON.parse(localStorage.getItem(RATE_KEY) || '[]');
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    const recent = log.filter(ts => ts > oneHourAgo);
+    localStorage.setItem(RATE_KEY, JSON.stringify(recent));
+    return recent.length < CFG.RATE_LIMIT_PER_HOUR;
+}
+function recordCreation() {
+    const log = JSON.parse(localStorage.getItem(RATE_KEY) || '[]');
+    log.push(Date.now());
+    localStorage.setItem(RATE_KEY, JSON.stringify(log));
+}
+
+// ---------------------------------------------------------------------
+// Отправка
+// ---------------------------------------------------------------------
+el('submit-btn').addEventListener('click', async () => {
+    if (!validateStep(4)) return;
+
+    if (!checkRateLimit()) {
+        showSubmitError(`Сағатына тек ${CFG.RATE_LIMIT_PER_HOUR} сайт жасауға болады. Кейінірек қайталап көріңіз.`);
+        return;
+    }
+
+    const btn = el('submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Құрылуда...';
+
+    const payload = {
+        restaurant_id: restaurantId,
+        event_type: el('event_type').value,
+        names: el('names').value.trim(),
+        event_date: new Date(el('event_date').value).toISOString(),
+        location_name: el('location_name').value.trim(),
+        location_url: el('location_url').value.trim() || '',
+        template_id: selectedTemplate,
+        client_phone: el('client_phone').value.trim()
+        // status намеренно не передаём — БД сама принудительно ставит
+        // 'draft' триггером force_draft_on_insert (см. schema.sql),
+        // даже если это поле подделать в devtools.
+    };
+
+    const { data, error } = await supabase
+        .from('invitations')
+        .insert(payload)
+        .select('id')
+        .single();
+
+    if (error) {
+        console.error(error);
+        showSubmitError('Қате пайда болды. Байланысыңызды тексеріп, қайталап көріңіз.');
+        btn.disabled = false;
+        btn.textContent = 'Сайтты құру';
+        return;
+    }
+
+    recordCreation();
+    window.location.href = `index.html?id=${data.id}`;
+});
+
+function showSubmitError(msg) {
+    const box = el('submit-error');
+    box.textContent = msg;
+    box.classList.add('show');
+}
+
+renderProgress();
+resolveRef();
+</script>
+</body>
+</html>

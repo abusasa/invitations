@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ToiTech — Админ</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#221D15">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ToiTech Admin">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+    :root{--bg:#F6F1E4; --ink:#221D15; --maroon:#7A2430; --gold:#B8892B; --line:#E3D9BF; --ok:#3E6B4F; --danger:#A44A3F;}
+    *{box-sizing:border-box;}
+    body{margin:0; font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--ink);
+        padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);}
+
+    /* ---------- LOGIN ---------- */
+    #login-screen{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;}
+    .login-card{background:#fff; border-radius:16px; padding:32px 26px; max-width:340px; width:100%; box-shadow:0 8px 30px rgba(0,0,0,.08);}
+    .login-card h1{font-size:1.3rem; margin:0 0 4px;}
+    .login-card p{color:#8a8070; font-size:0.85rem; margin:0 0 22px;}
+    .login-card input{width:100%; padding:13px 14px; border:1.5px solid var(--line); border-radius:10px; font-size:1rem; margin-bottom:14px;}
+    .checkbox-row{display:flex; align-items:center; gap:8px; margin-bottom:18px; font-size:0.88rem;}
+    .login-card button{width:100%; padding:14px; border:none; border-radius:10px; background:var(--maroon); color:#fff; font-weight:700; font-size:1rem; cursor:pointer;}
+    .login-error{color:var(--danger); font-size:0.85rem; margin-top:10px; display:none;}
+    .login-error.show{display:block;}
+
+    /* ---------- DASHBOARD ---------- */
+    #dashboard{display:none; min-height:100vh;}
+    header{position:sticky; top:0; background:var(--bg); z-index:10; padding:18px 20px 12px; border-bottom:1px solid var(--line);
+        display:flex; justify-content:space-between; align-items:center; padding-top:calc(18px + env(safe-area-inset-top,0px));}
+    header h1{font-size:1.15rem; margin:0;}
+    .logout-btn{background:none; border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:0.82rem; cursor:pointer; color:var(--ink);}
+
+    .list{padding:16px 20px 40px; display:flex; flex-direction:column; gap:12px; max-width:640px; margin:0 auto;}
+    .order-card{background:#fff; border-radius:14px; padding:16px; box-shadow:0 2px 12px rgba(0,0,0,.05);}
+    .order-top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+    .order-names{font-weight:700; font-size:1.02rem; margin:0;}
+    .order-type{font-size:0.8rem; color:#8a8070; margin:2px 0 0;}
+    .status-pill{font-size:0.72rem; font-weight:700; padding:4px 10px; border-radius:20px; white-space:nowrap;}
+    .status-pill.draft{background:#FBE9E7; color:var(--danger);}
+    .status-pill.paid{background:#E4F0E7; color:var(--ok);}
+
+    .order-meta{margin-top:12px; font-size:0.88rem; display:flex; flex-direction:column; gap:5px; color:#4a4335;}
+    .order-meta .row{display:flex; gap:8px;}
+    .order-meta .k{color:#8a8070; min-width:110px; flex-shrink:0;}
+
+    .expiry-note{font-size:0.78rem; margin-top:10px; font-weight:600;}
+    .expiry-note.ok{color:var(--ok);}
+    .expiry-note.warn{color:var(--gold);}
+    .expiry-note.expired{color:var(--danger);}
+
+    .activate-btn{
+        width:100%; margin-top:14px; padding:12px; border:none; border-radius:10px;
+        background:var(--maroon); color:#fff; font-weight:700; cursor:pointer; font-size:0.92rem;
+    }
+    .activate-btn:disabled{background:#c9baa9; cursor:default;}
+    .activate-btn.done{background:var(--ok);}
+
+    .empty, .loading{text-align:center; color:#8a8070; padding:60px 20px;}
+</style>
+</head>
+<body>
+
+<!-- ==================== ЭКРАН ВХОДА ==================== -->
+<div id="login-screen">
+    <div class="login-card">
+        <h1>ToiTech Admin</h1>
+        <p>Кіру үшін құпия сөзді енгізіңіз</p>
+        <input type="password" id="password" placeholder="Құпия сөз" autocomplete="current-password">
+        <div class="checkbox-row">
+            <input type="checkbox" id="remember" style="width:auto;">
+            <label for="remember">Осы құрылғыда есте сақтау</label>
+        </div>
+        <button id="login-btn">Кіру</button>
+        <div class="login-error" id="login-error"></div>
+    </div>
+</div>
+
+<!-- ==================== ДАШБОРД ==================== -->
+<div id="dashboard">
+    <header>
+        <h1>Тапсырыстар</h1>
+        <button class="logout-btn" id="logout-btn">Шығу</button>
+    </header>
+    <div class="list" id="list"><div class="loading">Жүктелуде...</div></div>
+</div>
+
+<script>
+const CFG = window.TOITECH_CONFIG;
+const REMEMBER_FLAG_KEY = 'toitech_admin_remember';
+
+// -----------------------------------------------------------------------
+// "Запомнить меня": ключевая идея — сначала решаем, каким хранилищем
+// пользоваться (localStorage переживает закрытие браузера, sessionStorage
+// нет), и создаём supabase-клиент именно с этим storage. Сам факт выбора
+// (да/нет) хранится в localStorage отдельным маленьким флагом — это не
+// секрет, поэтому его можно хранить всегда.
+// -----------------------------------------------------------------------
+function getPreferredStorage() {
+    const remember = localStorage.getItem(REMEMBER_FLAG_KEY) === '1';
+    return remember ? window.localStorage : window.sessionStorage;
+}
+
+const supabase = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
+    auth: { storage: getPreferredStorage(), persistSession: true, autoRefreshToken: true }
+});
+
+const el = (id) => document.getElementById(id);
+let realtimeChannel = null;
+
+// -----------------------------------------------------------------------
+// Вход. На экране только пароль — email админа зашит в config.js
+// (ADMIN_EMAIL), но пароль проверяется настоящим Supabase Auth, а не
+// сравнением строк в JS (в отличие от исходной идеи с localStorage-паролем,
+// который был бы виден в исходном коде страницы).
+// -----------------------------------------------------------------------
+el('login-btn').addEventListener('click', async () => {
+    const password = el('password').value;
+    if (!password) return;
+
+    const remember = el('remember').checked;
+    localStorage.setItem(REMEMBER_FLAG_KEY, remember ? '1' : '0');
+
+    // Пересоздаём клиент с нужным storage ПЕРЕД входом, чтобы сессия
+    // записалась туда, где её ожидает checkSession() при следующем визите.
+    window.__supabaseAdmin = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
+        auth: { storage: remember ? window.localStorage : window.sessionStorage, persistSession: true, autoRefreshToken: true }
+    });
+
+    const { error } = await window.__supabaseAdmin.auth.signInWithPassword({
+        email: CFG.ADMIN_EMAIL,
+        password
+    });
+
+    if (error) {
+        el('login-error').textContent = 'Құпия сөз қате';
+        el('login-error').classList.add('show');
+        return;
+    }
+
+    showDashboard(window.__supabaseAdmin);
+});
+
+el('logout-btn').addEventListener('click', async () => {
+    const client = window.__supabaseAdmin || supabase;
+    await client.auth.signOut();
+    location.reload();
+});
+
+async function checkExistingSession() {
+    const { data } = await supabase.auth.getSession();
+    if (data.session) {
+        window.__supabaseAdmin = supabase;
+        showDashboard(supabase);
+    }
+}
+
+function showDashboard(client) {
+    el('login-screen').style.display = 'none';
+    el('dashboard').style.display = 'block';
+    loadOrders(client);
+    subscribeRealtime(client);
+}
+
+// -----------------------------------------------------------------------
+// Загрузка и рендер заказов
+// -----------------------------------------------------------------------
+async function loadOrders(client) {
+    const { data, error } = await client
+        .from('invitations')
+        .select('id, event_type, names, client_phone, status, created_at, event_date, restaurants(name)')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        el('list').innerHTML = `<div class="empty">Жүктеу қатесі: ${escapeHtml(error.message)}</div>`;
+        return;
+    }
+    if (!data.length) {
+        el('list').innerHTML = `<div class="empty">Тапсырыстар әлі жоқ</div>`;
+        return;
+    }
+
+    el('list').innerHTML = data.map(renderOrderCard).join('');
+    startExpiryTicks();
+
+    data.forEach(order => {
+        const btn = document.getElementById(`activate-${order.id}`);
+        if (btn) btn.addEventListener('click', () => activatePayment(client, order.id));
+    });
+}
+
+function renderOrderCard(o) {
+    const restaurantName = o.restaurants ? o.restaurants.name : '—';
+    const createdAt = new Date(o.created_at);
+    return `
+    <div class="order-card" data-id="${o.id}" data-created="${o.created_at}" data-status="${o.status}">
+        <div class="order-top">
+            <div>
+                <p class="order-names">${escapeHtml(o.names)}</p>
+                <p class="order-type">${escapeHtml(o.event_type)}</p>
+            </div>
+            <span class="status-pill ${o.status}">${o.status === 'paid' ? 'ТӨЛЕНГЕН' : 'DRAFT'}</span>
+        </div>
+        <div class="order-meta">
+            <div class="row"><span class="k">WhatsApp</span><span>${escapeHtml(o.client_phone)}</span></div>
+            <div class="row"><span class="k">Мекеме</span><span>${escapeHtml(restaurantName)}</span></div>
+            <div class="row"><span class="k">Құрылған уақыт</span><span>${createdAt.toLocaleString('ru-RU')}</span></div>
+        </div>
+        <div class="expiry-note" data-expiry></div>
+        ${o.status === 'draft'
+            ? `<button class="activate-btn" id="activate-${o.id}">Подтвердить оплату (Активировать)</button>`
+            : `<button class="activate-btn done" disabled>Активтендірілген</button>`
+        }
+    </div>`;
+}
+
+// -----------------------------------------------------------------------
+// Тикер до истечения 30-минутного демо-окна на каждой карточке
+// -----------------------------------------------------------------------
+let expiryInterval = null;
+function startExpiryTicks() {
+    clearInterval(expiryInterval);
+    tickExpiries();
+    expiryInterval = setInterval(tickExpiries, 1000);
+}
+function tickExpiries() {
+    document.querySelectorAll('.order-card').forEach(card => {
+        if (card.dataset.status !== 'draft') {
+            card.querySelector('[data-expiry]').textContent = '';
+            return;
+        }
+        const created = new Date(card.dataset.created).getTime();
+        const limitMs = CFG.DEMO_LIMIT_MINUTES * 60 * 1000;
+        const remaining = limitMs - (Date.now() - created);
+        const note = card.querySelector('[data-expiry]');
+        if (remaining <= 0) {
+            note.textContent = 'Демо мерзімі аяқталды';
+            note.className = 'expiry-note expired';
+        } else {
+            const m = Math.floor(remaining / 60000);
+            const s = Math.floor((remaining % 60000) / 1000);
+            note.textContent = `Демо аяқталуға: ${m}:${String(s).padStart(2, '0')}`;
+            note.className = 'expiry-note ' + (remaining < 5 * 60000 ? 'warn' : 'ok');
+        }
+    });
+}
+
+// -----------------------------------------------------------------------
+// Активация оплаты
+// -----------------------------------------------------------------------
+async function activatePayment(client, id) {
+    const btn = document.getElementById(`activate-${id}`);
+    btn.disabled = true;
+    btn.textContent = 'Сақталуда...';
+
+    const { error } = await client
+        .from('invitations')
+        .update({ status: 'paid' })
+        .eq('id', id);
+
+    if (error) {
+        btn.disabled = false;
+        btn.textContent = 'Подтвердить оплату (Активировать)';
+        alert('Қате: ' + error.message);
+        return;
+    }
+
+    btn.textContent = 'Активтендірілген';
+    btn.classList.add('done');
+    const card = document.querySelector(`.order-card[data-id="${id}"]`);
+    card.dataset.status = 'paid';
+    card.querySelector('.status-pill').textContent = 'ТӨЛЕНГЕН';
+    card.querySelector('.status-pill').className = 'status-pill paid';
+}
+
+// -----------------------------------------------------------------------
+// Realtime: если оплату подтвердили с другого устройства/вкладки,
+// список обновляется сам.
+// -----------------------------------------------------------------------
+function subscribeRealtime(client) {
+    if (realtimeChannel) client.removeChannel(realtimeChannel);
+    realtimeChannel = client
+        .channel('admin-invitations')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'invitations' }, () => loadOrders(client))
+        .subscribe();
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+checkExistingSession();
+</script>
+</body>
+</html>
